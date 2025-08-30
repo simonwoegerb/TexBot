@@ -1,0 +1,8 @@
+services:
+  texbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: [./.env]
+    image: simonw/texbot:v1
+    container_name: texbot_bot
