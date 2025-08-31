@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -58,8 +59,7 @@ public class TexHandler {
                 return convertTexToPdf(code, TEMPLATE_FULL);
             }
             case TexToPng -> {
-                var pdf = convertTexToPdf(code, TEMPLATE_STANDALONE);
-                return pdf.thenCompose(this::convertPdfToPng);
+                return convertTexToPdf(code, TEMPLATE_STANDALONE).thenCompose(this::convertPdfToPng);
             }
         }
 
@@ -97,7 +97,6 @@ public class TexHandler {
 
 
 }
-    @Nullable
     private CompletableFuture<Path> convertTexToPdf(String code, String template) {
     Path main = generateMainFile(code, template);
     if (main == null) {
@@ -106,7 +105,7 @@ public class TexHandler {
     }
             return CompletableFuture.supplyAsync(() -> {
                 LOGGER.info("Entering Future");
-                ProcessBuilder pb = new ProcessBuilder().directory(main.getParent().toFile()).command("latexmk", "main.tex");
+                ProcessBuilder pb = new ProcessBuilder().directory(main.getParent().toFile()).command("latexmk", "--no-shell-escape","main.tex");
                 try {
                     Process p = pb.start();
                     int rescode = p.waitFor();
@@ -173,6 +172,33 @@ public class TexHandler {
         } catch (IOException e) {
             return false;
         }
+
     }
+    // List of dangerous LaTeX commands or patterns
+    private final Pattern[] dangerousPatterns = new Pattern[] {
+            Pattern.compile("\\\\write18\\b"),        // Shell escape
+            Pattern.compile("\\\\(input|include)\\b"), // File inclusion
+            Pattern.compile("\\\\(openout|write|read)\\b"), // File IO
+            Pattern.compile("\\.\\./"),               // Path traversal
+            Pattern.compile("\\\\usepackage\\s*\\{.*?(shellesc|minted|verbatim).*?\\}"), // Dangerous packages
+            Pattern.compile("\\\\loop"),              // Infinite loop risk
+            Pattern.compile("\\\\immediate"),         // Often used with write18
+            Pattern.compile("\\\\newwrite"),          // Opens file handles
+            Pattern.compile("\\\\write\\d*\\b"),      // Generic write
+            Pattern.compile("\\\\read\\d*\\b")        // Generic read
+    };
+
+    public boolean isSafeLatex(String input) {
+        if (input == null) return false;
+
+        for (Pattern pattern : dangerousPatterns) {
+            if (pattern.matcher(input).find()) {
+                return false; // Unsafe pattern found
+            }
+        }
+
+        return true; // No unsafe patterns detected
+    }
+
 
 }

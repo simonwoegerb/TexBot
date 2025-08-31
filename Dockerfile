@@ -43,6 +43,7 @@ RUN apt update && apt install -y --no-install-recommends \
 
 # Copy the build artifacts (e.g., JAR or WAR) from the previous build stage
 COPY --from=build /app/build/libs/bot.jar /app/bot.jar
+COPY --from=build /app/icon.png /app/icon.png
 
 # Run the application (if it’s a JAR file)
 CMD ["java", "-jar", "/app/bot.jar"]
