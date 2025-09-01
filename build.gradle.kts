@@ -25,9 +25,20 @@ tasks.shadowJar {
     }
 }
 
+
 tasks.build {
     dependsOn(tasks.shadowJar)
 }
+
+
+testing {
+    suites {
+        named<JvmTestSuite>("test") {
+            useJUnitJupiter("5.13.4")
+        }
+    }
+}
+
 
 dependencies {
     // SLF4J API
@@ -39,9 +50,13 @@ dependencies {
     // Core Log4j dependencies
     implementation("org.apache.logging.log4j:log4j-core:2.23.1")
     implementation("org.apache.logging.log4j:log4j-api:2.23.1")
+    implementation("com.squareup.okhttp3:okhttp:5.1.0")
     implementation("net.dv8tion:JDA:$jdaversion") { // replace $version with the latest version
 
         exclude(module="opus-java") // required for encoding audio into opus, not needed if audio is already provided in opus encoding
         exclude(module="tink") // required for encrypting and decrypting audio
     }
+    testImplementation(platform("org.junit:junit-bom:5.13.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

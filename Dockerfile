@@ -8,10 +8,12 @@ WORKDIR /app
 COPY . .
 
 # Run the Gradle build
-RUN gradle clean build --info --no-daemon
+RUN gradle clean assemble --info --no-daemon
 
 # Remove the 'src' directory to save space
 RUN rm -rf src
+
+
 
 
 WORKDIR /app
