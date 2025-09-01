@@ -175,29 +175,55 @@ public class TexHandler {
 
     }
     // List of dangerous LaTeX commands or patterns
-    private final Pattern[] dangerousPatterns = new Pattern[] {
-            Pattern.compile("\\\\write18\\b"),        // Shell escape
-            Pattern.compile("\\\\(input|include)\\b"), // File inclusion
-            Pattern.compile("\\\\(openout|write|read)\\b"), // File IO
-            Pattern.compile("\\.\\./"),               // Path traversal
-            Pattern.compile("\\\\usepackage\\s*\\{.*?(shellesc|minted|verbatim).*?\\}"), // Dangerous packages
-            Pattern.compile("\\\\loop"),              // Infinite loop risk
-            Pattern.compile("\\\\immediate"),         // Often used with write18
-            Pattern.compile("\\\\newwrite"),          // Opens file handles
-            Pattern.compile("\\\\write\\d*\\b"),      // Generic write
-            Pattern.compile("\\\\read\\d*\\b")        // Generic read
+
+    // List of dangerous LaTeX commands/patterns (case-insensitive)
+    private static final Pattern[] DANGEROUS_PATTERNS = new Pattern[] {
+            // File I/O and shell escape
+            Pattern.compile("\\\\write18", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\\\\write(?!18)\\b", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\\\\input", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\\\\include", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\\\\openout", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\\\\read", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\\\\new(write|read)\\b", Pattern.CASE_INSENSITIVE),
+
+            // Dangerous package loading
+            Pattern.compile("\\\\usepackage\\s*\\{\\s*(shellesc|verbatim|catchfile|filecontents|tikz|pgf)\\s*\\}", Pattern.CASE_INSENSITIVE),
+
+            // Command/macro creation or redefinition
+            Pattern.compile("\\\\(e)?def\\b", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\\\\(loop|repeat|newcommand|renewcommand)\\b", Pattern.CASE_INSENSITIVE),
+
+            // Execution hooks and expansion tricks
+            Pattern.compile("\\\\every[a-zA-Z]+", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\\\\(expandafter|noexpand)\\b", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\\\\special\\b", Pattern.CASE_INSENSITIVE),
+
+            // Obfuscated or indirect execution
+            Pattern.compile("\\\\catcode", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\\\\csname.*?\\\\endcsname", Pattern.CASE_INSENSITIVE),
+
+            // Escaped backslashes or obfuscated unicode
+            Pattern.compile("[\\\\]{2,}input", Pattern.CASE_INSENSITIVE),     // \\input
+            Pattern.compile("\\\\u005cinput", Pattern.CASE_INSENSITIVE),      // Unicode escape for '\input'
+
+            // Commented attempts
+            Pattern.compile("%.*?\\\\input", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\\\\input%.*?\\n", Pattern.CASE_INSENSITIVE)
     };
 
     public boolean isSafeLatex(String input) {
-        if (input == null) return false;
+        if (input == null || input.isEmpty()) {
+            return true; // Empty or null is considered safe
+        }
 
-        for (Pattern pattern : dangerousPatterns) {
+        for (Pattern pattern : DANGEROUS_PATTERNS) {
             if (pattern.matcher(input).find()) {
                 return false; // Unsafe pattern found
             }
         }
 
-        return true; // No unsafe patterns detected
+        return true; // No unsafe patterns
     }
 
 

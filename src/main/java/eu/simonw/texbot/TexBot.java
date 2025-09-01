@@ -1,6 +1,8 @@
 package eu.simonw.texbot;
 
+import eu.simonw.texbot.commands.Commands;
 import eu.simonw.texbot.commands.MathsSlashCommand;
+import eu.simonw.texbot.events.MathsChatListener;
 import eu.simonw.texbot.tex.TexHandler;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
@@ -21,6 +23,7 @@ import java.util.List;
 
 public class TexBot extends ListenerAdapter {
 public static final Logger LOGGER = LoggerFactory.getLogger(TexBot.class);
+public static Commands commands;
     public static void main(String[] args) {
         final String TOKEN = System.getenv("TOKEN");
         if (TOKEN == null || TOKEN.trim().equalsIgnoreCase("")) {
@@ -53,6 +56,8 @@ public static final Logger LOGGER = LoggerFactory.getLogger(TexBot.class);
                 .build();
         TexHandler handler = new TexHandler();
         LOGGER.info("{}", handler.setup_file("tex/template_standalone.tex"));
-        jda.addEventListener(new MathsSlashCommand(jda, handler));
+        jda.addEventListener(
+                new MathsSlashCommand( handler),
+                new MathsChatListener(handler));
     }
 }
