@@ -1,19 +1,19 @@
 package eu.simonw.texbot.commands;
 
 import eu.simonw.texbot.EmbedCreator;
-import eu.simonw.texbot.TexBot;
-import eu.simonw.texbot.paste.LuckoPaste;
+import eu.simonw.texbot.paste.PasteHandler;
+import eu.simonw.texbot.paste.PasteManager;
 import eu.simonw.texbot.tex.TexHandler;
-import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.dv8tion.jda.api.interactions.commands.Command;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
-import net.dv8tion.jda.api.interactions.commands.build.*;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
+import net.dv8tion.jda.api.interactions.commands.build.OptionData;
+import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
+import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.utils.FileUpload;
 
 import java.nio.file.Path;
@@ -21,62 +21,85 @@ import java.nio.file.StandardOpenOption;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
+import static eu.simonw.texbot.TexBot.LOGGER;
+
 public class MathsSlashCommand extends ListenerAdapter {
     private final TexHandler texHandler;
     private final EmbedCreator embedCreator;
-    public MathsSlashCommand(TexHandler texHandler) {
+    private final SlashCommandData INSTANCE;
+    private final PasteManager pasteManager;
+
+    public MathsSlashCommand(TexHandler texHandler, PasteManager pasteManager) {
         this.texHandler = texHandler;
+        this.pasteManager = pasteManager;
         embedCreator = new EmbedCreator();
-                 Commands.slash("maths", "Repeats messages back to you.")
-                        .addSubcommands(
-                                new SubcommandData("inline", "Renders inline code given by argument")
+        INSTANCE = Commands.slash("maths", "Repeats messages back to you.")
+                .addSubcommands(
+                        new SubcommandData("inline", "Renders inline code given by argument")
                                 .addOption(OptionType.STRING, "code", "LaTeX code to render", true))
-                        .addSubcommands(
-                                new SubcommandData("pastelink", "Renders code given by a pastebin link")
-                                        .addOption(OptionType.STRING, "url", "Paste URL", true)
-                                        .addOptions(new OptionData(OptionType.STRING, "type", "Type of Paste link", true, true)
-                                                .addChoice("lucko", "lucko")
-                                                .addChoice("pastebin", "pastebin")
-                                                .addChoice("privatebin", "privatebin")
-                                                .addChoice("hastebin", "hastebin"))
-                        );
+                .addSubcommands(
+                        new SubcommandData("pastelink", "Renders code given by a pastebin link")
+                                .addOption(OptionType.STRING, "url", "Paste URL", true)
+                                .addOptions(new OptionData(OptionType.STRING, "type", "Type of Paste link", true, false)
+                                        .addChoice("lucko", "lucko")
+                                        .addChoice("pastebin", "pastebin")
+                                        .addChoice("privatebin", "privatebin")
+                                        .addChoice("hastebin", "hastebin"))
+                );
     }
 
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
-        if (event.getName().equalsIgnoreCase("maths")) {
-            TexBot.LOGGER.error("CMD");
-            final String code = event.getOption("latex", OptionMapping::getAsString);
-            if (!texHandler.isSafeLatex(code)) {
-                event.reply("Your code is unsafe.").queue();
+        final String command = event.getFullCommandName();
+        //If command matches: immediately deferReply
+        if (command.startsWith("maths")) event.deferReply(false).queue();
+        else return;
+        CompletableFuture<String> codeFuture = null;
+
+        if (command.equalsIgnoreCase("maths inline")) {
+
+            //Inline branch
+            codeFuture = CompletableFuture.completedFuture(event.getOption("code", OptionMapping::getAsString));
+        } else if (command.equalsIgnoreCase("maths pastelink")) {
+
+            // Pastebin branch
+            final String link = event.getOption("url", OptionMapping::getAsString);
+            final PasteHandler pasteHandler = event.getOption("type", pasteManager::getFromOption);
+            if (pasteHandler == null) {
+                LOGGER.error("Pastehandler not identified/null");
                 return;
             }
-            event.deferReply(false).queue();
-            LuckoPaste paste = new LuckoPaste();
 
-            var x = paste.get("http://paste.simonw.eu/oFdPu");
-            x.thenAccept(val -> {
-                CompletableFuture<Path> py = texHandler.convert(val, TexHandler.ConversionType.TexToPng);
-                TexBot.LOGGER.error("start");
-                assert py != null;
-                py.thenAccept(pa -> {
+            LOGGER.info("Link {}: {}", link, pasteHandler.getClass());
 
-                    TexBot.LOGGER.info("{}", pa.toAbsolutePath().toString());
-                    String uuid = UUID.randomUUID().toString();
-                    User user = event.getInteraction().getUser();
-                    MessageEmbed embed = embedCreator.
-                            createDefaultEmbed()
-                            .addField("Your LaTeX code has been converted to the following:", "", false)
-                            .setImage("attachment://" + uuid + ".png")
-                            .setFooter("Requested by: " + user.getEffectiveName(), user.getEffectiveAvatarUrl())
-                            .build();
-                    event.getHook().sendMessageEmbeds(embed).addFiles(FileUpload.fromData(pa, uuid + ".png", StandardOpenOption.READ)).queue();
-                });
-                TexBot.LOGGER.error("isdone");
-
-
-            });
-
+            codeFuture = pasteHandler.get(link);
         }
+        if (codeFuture == null) {
+            LOGGER.error("Code cannot be retrieved");
+            return;
+        }
+        codeFuture.thenCompose(texHandler::isSafeLatexAsync)
+                .exceptionally(s -> {
+                    LOGGER.error("Code was unsafe: {}", s.getMessage());
+                    return "$\\Huge\\text{Your code is unsafe." +
+                            "Refrain from using disallowed commands}$";
+                })
+                .thenCompose(s -> texHandler.convert(s, TexHandler.ConversionType.TexToPng))
+            .thenAccept(path -> {
+                LOGGER.info("{}", path.toAbsolutePath());
+                String uuid = UUID.randomUUID().toString();
+                User user = event.getInteraction().getUser();
+                MessageEmbed embed = embedCreator.
+                        createDefaultEmbed()
+                        .addField("Your LaTeX code has been converted to the following:", "", false)
+                        .setImage("attachment://" + uuid + ".png")
+                        .setFooter("Requested by: " + user.getEffectiveName(), user.getEffectiveAvatarUrl())
+                        .build();
+                event.getHook().sendMessageEmbeds(embed).addFiles(FileUpload.fromData(path, uuid + ".png", StandardOpenOption.READ)).queue();
+            });
+    }
+
+    public SlashCommandData getInstance() {
+        return INSTANCE;
     }
 }

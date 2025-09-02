@@ -1,7 +1,6 @@
 package eu.simonw.texbot.paste;
 
 import okhttp3.*;
-import okhttp3.internal.http2.Header;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,10 +18,12 @@ public class PasteHttpClient {
         LOGGER = LoggerFactory.getLogger(getClass());
         okHttp = new OkHttpClient();
     }
+
     public CompletableFuture<String> getContent(String actual_uri) {
         return getContent(actual_uri, new HashMap<>());
     }
-    public CompletableFuture<String> getContent(String actual_uri, Map<String,String> additional_headers) {
+
+    public CompletableFuture<String> getContent(String actual_uri, Map<String, String> additional_headers) {
         Request request = new Request.Builder()
                 .url(actual_uri)
                 .headers(

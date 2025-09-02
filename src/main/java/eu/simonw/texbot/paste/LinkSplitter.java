@@ -9,16 +9,17 @@ public final class LinkSplitter {
     public LinkSplitter() {
     }
 
-    public record PasteUrl(String url, String id){
+    public record PasteUrl(String url, String id) {
 
     }
+
     public static PasteUrl splitUrl(String link) {
         if (URL_PATTERN == null) {
             URL_PATTERN = Pattern.compile("(?<url>https?://.+)/(?<pasteid>.+)");
         }
         Matcher matcher = URL_PATTERN.matcher(link);
         if (matcher.matches())
-        return new PasteUrl(matcher.group("url"), matcher.group("pasteid"));
+            return new PasteUrl(matcher.group("url"), matcher.group("pasteid"));
         else
             return new PasteUrl("", "");
     }

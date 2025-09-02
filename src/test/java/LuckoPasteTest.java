@@ -14,6 +14,7 @@ public class LuckoPasteTest {
         });
 
     }
+
     @Test
     void linksplitter() {
         var x = LinkSplitter.splitUrl("https://paste.simonw.eu/oFdPu");

@@ -46,15 +46,18 @@ dependencies {
 
     // SLF4J binding for Log4j 2
     implementation("org.apache.logging.log4j:log4j-slf4j2-impl:2.23.1")
-
+    // Privatebin decryption library
+    implementation("org.bouncycastle:bcprov-jdk18on:1.81")
+    implementation("com.fasterxml.jackson.core:jackson-core:2.20.0")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.20.0")
     // Core Log4j dependencies
     implementation("org.apache.logging.log4j:log4j-core:2.23.1")
     implementation("org.apache.logging.log4j:log4j-api:2.23.1")
     implementation("com.squareup.okhttp3:okhttp:5.1.0")
     implementation("net.dv8tion:JDA:$jdaversion") { // replace $version with the latest version
 
-        exclude(module="opus-java") // required for encoding audio into opus, not needed if audio is already provided in opus encoding
-        exclude(module="tink") // required for encrypting and decrypting audio
+        exclude(module = "opus-java") // required for encoding audio into opus, not needed if audio is already provided in opus encoding
+        exclude(module = "tink") // required for encrypting and decrypting audio
     }
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")

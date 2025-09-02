@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TexHandlerTests {
     private final TexHandler texHandler = new TexHandler();
+
     @Test
     void testSafeLatexInputs() {
         assertTrue(texHandler.isSafeLatex("Hello world"));

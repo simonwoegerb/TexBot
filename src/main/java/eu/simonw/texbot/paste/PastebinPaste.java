@@ -1,17 +1,14 @@
 package eu.simonw.texbot.paste;
 
-import okhttp3.OkHttp;
-import okhttp3.OkHttpClient;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.concurrent.CompletableFuture;
 
-public class PastebinPaste implements PasteHandler{
+public class PastebinPaste implements PasteHandler {
     private final PasteHttpClient pasteHttpClient;
+
     public PastebinPaste() {
         pasteHttpClient = new PasteHttpClient();
     }
+
     @Override
     public CompletableFuture<String> get(String link) {
         LinkSplitter.PasteUrl pasteUrl = LinkSplitter.splitUrl(link);
