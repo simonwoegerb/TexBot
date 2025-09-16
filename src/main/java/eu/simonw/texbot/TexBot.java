@@ -58,11 +58,12 @@ public class TexBot extends ListenerAdapter {
                         CacheFlag.VOICE_STATE
                 )
                 .build();
+        BanManager banManager = new BanManager(false);
         TexHandler handler = new TexHandler();
         PasteManager pasteManager = new PasteManager(Map.of(PasteType.LUCKO, new LuckoPaste(), PasteType.PASTEBIN, new PastebinPaste()));
         LOGGER.info("{}", handler.setup_file("tex/template_standalone.tex"));
 
-        var mathscommand = new MathsSlashCommand(handler, pasteManager);
+        var mathscommand = new MathsSlashCommand(handler, pasteManager, banManager);
         jda.upsertCommand(mathscommand.getInstance()).queue(s -> LOGGER.info("Command loaded {}", s.getName()));
         jda.addEventListener(
                 mathscommand,

@@ -38,8 +38,9 @@ RUN apt update && apt install -y --no-install-recommends \
     lmodern \
     fontconfig \
     ghostscript \
+    firejail \
     poppler-utils \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+&& apt-get clean && rm -rf /var/lib/apt/lists/*
 
 
 

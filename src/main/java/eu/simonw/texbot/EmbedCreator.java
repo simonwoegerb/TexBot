@@ -3,6 +3,7 @@ package eu.simonw.texbot;
 import net.dv8tion.jda.api.EmbedBuilder;
 
 import java.awt.*;
+import java.time.Instant;
 
 public class EmbedCreator {
     public final String BOT_ICON_URL = "https://github.com/simonwoegerb/TexBot/blob/main/icon.png?raw=true";
@@ -11,7 +12,9 @@ public class EmbedCreator {
     public EmbedBuilder createDefaultEmbed() {
         return new EmbedBuilder()
                 .setAuthor("TexBot", BOT_URL, BOT_ICON_URL)
-                .setColor(Color.CYAN)
+                .setColor(Color.BLACK)
+                .setTimestamp(Instant.now())
+
                 ;
     }
 }

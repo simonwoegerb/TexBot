@@ -1,29 +1,51 @@
 package eu.simonw.texbot.tex;
 
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 public class TexHandler {
-    public static final String APP = "app/";
-    public static final String TEMPLATE_STANDALONE = APP + "tex/template_standalone.tex";
-    public static final String TEMPLATE_FULL = APP + "tex/template_full.tex";
+    public final String APP = "app/";
+    public final String TEMPLATE_STANDALONE = APP + "tex/template_standalone.tex";
+    public final String TEMPLATE_FULL = APP + "tex/template_full.tex";
+    private final String[] fireJailCommand = {"firejail",
+            "--caps.drop=all", // drop all root capabilities
+            "--net=none", //no network access
+            "--private=%DIRECTORY",
+            "--whitelist=/usr/bin/latexmk",
+            "--whitelist=/usr/bin/pdflatex",
+            "--whitelist=/usr/share/texlive",
+            "--whitelist=/usr/share/pdftoppm"
+    };
+    private final int fireJailPrivate = 3;
+    private final String[] pdfToPngCommand = new String[]{
+        "pdftoppm",    // pdftoppm executable
+            "-png",        // output format as PNG
+            "-r", "300",   // resolution of 300 DPI
+            "-f", "1",     // convert first page
+            "-l", "1",     // convert last page (same as first for single page)
+            "main.pdf",    // input PDF file
+            "main"         // output prefix (output will be 'main-1.png')
+    };
+    private final String[] texToPdfCommand = {"latexmk", "--no-shell-escape", "main.tex" };
 
-    public static final String DIRECTORY = APP + "tex/uuid";
-    public static final String BODY = "%BODY";
+    public final String DIRECTORY = APP + "tex/uuid";
+    public final String BODY = "%BODY";
 
     public enum ConversionType {
         TexToPdf,
@@ -32,22 +54,9 @@ public class TexHandler {
 
     private final Logger LOGGER = LoggerFactory.getLogger(TexHandler.class);
 
-    public boolean verify(String... command) {
-        ProcessBuilder processBuilder = new ProcessBuilder().command(command);
-        try {
-            var p = processBuilder.start();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-                String firstline = reader.readLine();
-                if (firstline != null) {
-                    LOGGER.info("{}: {}", command[0], firstline);
-                    return true;
-                }
-            }
-
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        return false;
+    @NotNull
+    private String[] concatArrays(String[] s1, String[] s2) {
+        return Stream.concat(Arrays.stream(s1),Arrays.stream(s2)).toArray(String[]::new);
     }
 
     @Nullable
@@ -63,26 +72,19 @@ public class TexHandler {
 
         return null;
     }
-
+    @NotNull
     private CompletableFuture<Path> convertPdfToPng(Path pdf_file) {
-        String[] command = {
-                "pdftoppm",    // pdftoppm executable
-                "-png",        // output format as PNG
-                "-r", "300",   // resolution of 300 DPI
-                "-f", "1",     // convert first page
-                "-l", "1",     // convert last page (same as first for single page)
-                "main.pdf",    // input PDF file
-                "main"         // output prefix (output will be 'main-1.png')
-        };
+
         LOGGER.info("PDF FILE FOR PNG CONV: {}", pdf_file.toAbsolutePath());
-        ProcessBuilder pb = new ProcessBuilder().directory(pdf_file.toAbsolutePath().getParent().toFile()).command(command);
+        ProcessBuilder pb = new ProcessBuilder().directory(pdf_file.toAbsolutePath().getParent().toFile()).command(pdfToPngCommand);
         return CompletableFuture.supplyAsync(() -> {
             try {
                 Process p = pb.start();
 
-                int rescode = p.waitFor();
-                if (rescode != 0) {
-                    LOGGER.error("ERROR {}", rescode);
+                boolean res = p.waitFor(30, TimeUnit.SECONDS);
+                if (!res) {
+                    p.destroyForcibly();
+                    LOGGER.error("ERROR {}", res);
                 }
                 // Resolving the PDF path relative to the main.tex file
                 LOGGER.info("resolving main.png");
@@ -96,39 +98,43 @@ public class TexHandler {
 
 
     }
-
+    @NotNull
     private CompletableFuture<Path> convertTexToPdf(String code, String template) {
-        Path main = generateMainFile(code, template);
-        if (main == null) {
-            LOGGER.error("Main is null");
-            return null;
-        }
-        return CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<Path> futuremain = generateMainFile(code, template);
+
+        return futuremain.thenCompose((main) -> {
             LOGGER.info("Entering Future");
-            ProcessBuilder pb = new ProcessBuilder().directory(main.getParent().toFile()).command("latexmk", "--no-shell-escape", "main.tex");
+            String[] command = concatArrays(fireJailCommand,texToPdfCommand);
+            command[fireJailPrivate] = command[fireJailPrivate].replaceFirst("%DIRECTORY", main.getParent().toAbsolutePath().toString());
+            ProcessBuilder pb = new ProcessBuilder().directory(main.getParent().toFile()).command(command);
             try {
                 Process p = pb.start();
-                int rescode = p.waitFor();
-                if (rescode != 0) {
-                    LOGGER.error("ERROR {}", rescode);
-                }
-                // Resolving the PDF path relative to the main.tex file
-                return main.getParent().resolve("main.pdf");
+                boolean success = p.waitFor(30, TimeUnit.SECONDS);
+                if (!success) {
+                    p.destroyForcibly();
+                    LOGGER.error("Process for {} was not successful {}", main.toAbsolutePath().toString(),p.exitValue());
+                    return CompletableFuture.failedFuture(new RuntimeException("Something went wrong, converting tex to pdf. see Log for " + main.toAbsolutePath().toString()));
+                } else
+                    // Resolving the PDF path relative to the main.tex file
+                    return CompletableFuture.completedFuture(main.getParent().resolve("main.pdf"));
 
             } catch (IOException | InterruptedException e) {
                 LOGGER.error("{}", e.getMessage());
-                return null;
+                return CompletableFuture.failedFuture(e);
             }
+
+
         });
 
     }
-
+    @NotNull
     @SuppressWarnings("unused")
-    private Path generateMainFile(String code, String template_type) {
+    private CompletableFuture<Path> generateMainFile(String code, String template_type) {
         Path template = Path.of(template_type);
         UUID random_uuid = UUID.randomUUID();
         Path new_directory = Path.of(DIRECTORY.replaceFirst("uuid", random_uuid.toString()));
         LOGGER.info("Converting a Tex File to Pdf : {}", random_uuid);
+        return CompletableFuture.supplyAsync(() -> {
         try {
             LOGGER.info("Attempting to create directory: {}", new_directory);
             Files.createDirectories(new_directory);
@@ -150,6 +156,7 @@ public class TexHandler {
         } catch (IOException e) {
             return null;
         }
+    });
     }
 
 
