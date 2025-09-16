@@ -52,14 +52,14 @@ public class TexHandler {
         TexToPng
     }
 
-    private final Logger LOGGER = LoggerFactory.getLogger(TexHandler.class);
+    protected final Logger LOGGER = LoggerFactory.getLogger(TexHandler.class);
 
     @NotNull
-    private String[] concatArrays(String[] s1, String[] s2) {
+    protected String[] concatArrays(String[] s1, String[] s2) {
         return Stream.concat(Arrays.stream(s1),Arrays.stream(s2)).toArray(String[]::new);
     }
 
-    @Nullable
+    @NotNull
     public CompletableFuture<Path> convert(String code, ConversionType conversionType) {
         switch (conversionType) {
             case TexToPdf -> {
@@ -70,13 +70,13 @@ public class TexHandler {
             }
         }
 
-        return null;
+        return CompletableFuture.failedFuture(new RuntimeException());
     }
     @NotNull
     private CompletableFuture<Path> convertPdfToPng(Path pdf_file) {
 
         LOGGER.info("PDF FILE FOR PNG CONV: {}", pdf_file.toAbsolutePath());
-        ProcessBuilder pb = new ProcessBuilder().directory(pdf_file.toAbsolutePath().getParent().toFile()).command(pdfToPngCommand);
+        ProcessBuilder pb = new ProcessBuilder().directory(pdf_file.toAbsolutePath().getParent().toFile()).command(firejail(pdfToPngCommand,pdf_file));
         return CompletableFuture.supplyAsync(() -> {
             try {
                 Process p = pb.start();
@@ -104,8 +104,7 @@ public class TexHandler {
 
         return futuremain.thenCompose((main) -> {
             LOGGER.info("Entering Future");
-            String[] command = concatArrays(fireJailCommand,texToPdfCommand);
-            command[fireJailPrivate] = command[fireJailPrivate].replaceFirst("%DIRECTORY", main.getParent().toAbsolutePath().toString());
+            String[] command = firejail(texToPdfCommand, main);
             ProcessBuilder pb = new ProcessBuilder().directory(main.getParent().toFile()).command(command);
             try {
                 Process p = pb.start();
@@ -241,7 +240,13 @@ public class TexHandler {
             return latex;
         });
     }
-
+    public final String[] firejail(String[] command, Path workingDirectory) {
+        String[] finalCommand = concatArrays(fireJailCommand,command);
+        for (int i = 0; i < finalCommand.length; i++) {
+            finalCommand[i] = finalCommand[i].replaceFirst("%DIRECTORY", workingDirectory.getParent().toAbsolutePath().toString());
+        }
+        return finalCommand;
+    }
 
 
 }

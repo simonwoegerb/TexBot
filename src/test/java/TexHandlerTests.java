@@ -1,11 +1,15 @@
 import eu.simonw.texbot.tex.TexHandler;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.lang.reflect.Field;
+import java.nio.file.Path;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 
-public class TexHandlerTests {
+public class TexHandlerTests extends TexHandler {
     private final TexHandler texHandler = new TexHandler();
 
     @Test
@@ -36,5 +40,32 @@ public class TexHandlerTests {
     void testEdgeCases() {
         assertTrue(texHandler.isSafeLatex(""));
         assertTrue(texHandler.isSafeLatex(null)); // Or assertThrows if null is invalid
+    }
+
+    /*
+    firejail",
+            "--caps.drop=all", // drop all root capabilities
+            "--net=none", //no network access
+            "--private=%DIRECTORY",
+            "--whitelist=/usr/bin/latexmk",
+            "--whitelist=/usr/bin/pdflatex",
+            "--whitelist=/usr/share/texlive",
+            "--whitelist=/usr/share/pdftoppm"
+     */
+    @Test
+    void testFirejail() throws Exception{
+        Path path = Path.of("/mocked/path.txt");
+        String[] result = texHandler.firejail(new String[]{"a1", "a2"}, path);
+        assertEquals("firejail", result[0]);
+        assertEquals("--private=/mocked", result[3]);
+        assertEquals("--whitelist=/usr/bin/latexmk",result[4]);
+
+        assertEquals("a1", result[result.length-2]);
+        assertEquals("a2", result[result.length-1]);
+    }
+    @Test
+    void testConcat() {
+        String[] testVal = concatArrays(new String[]{"a1", "a2"}, new String[]{"a3", "a4"}) ;
+        assertArrayEquals(new String[] {"a1", "a2", "a3", "a4"}, testVal);
     }
 }

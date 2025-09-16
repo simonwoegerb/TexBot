@@ -1,6 +1,6 @@
 plugins {
     id("java")
-    id("com.github.johnrengelman.shadow") version "8.1.1"
+    id("com.gradleup.shadow") version "9.1.0"
     id("application")
 
 }
@@ -59,6 +59,14 @@ dependencies {
         exclude(module = "opus-java") // required for encoding audio into opus, not needed if audio is already provided in opus encoding
         exclude(module = "tink") // required for encrypting and decrypting audio
     }
+    implementation("org.jdbi:jdbi:2.78")
+    implementation("org.jdbi:jdbi3-postgres:3.49.5")
+    implementation("org.jdbi:jdbi3-sqlobject:3.49.5")
+    implementation("org.postgresql:postgresql:42.7.7")
+    implementation("com.zaxxer:HikariCP:7.0.2")
+
+    implementation("com.github.ben-manes.caffeine:caffeine:3.2.2")
+
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

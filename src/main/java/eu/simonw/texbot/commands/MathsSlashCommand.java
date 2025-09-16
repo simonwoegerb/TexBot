@@ -2,6 +2,8 @@ package eu.simonw.texbot.commands;
 
 import eu.simonw.texbot.BanManager;
 import eu.simonw.texbot.EmbedCreator;
+import eu.simonw.texbot.data.ServerConfigDAO;
+import eu.simonw.texbot.data.ServerConfigRetriever;
 import eu.simonw.texbot.paste.PasteHandler;
 import eu.simonw.texbot.paste.PasteManager;
 import eu.simonw.texbot.tex.TexHandler;
@@ -35,11 +37,11 @@ public class MathsSlashCommand extends ListenerAdapter {
     private final EmbedCreator embedCreator;
     private final SlashCommandData INSTANCE;
     private final PasteManager pasteManager;
-    private final BanManager banManager;
+    private final ServerConfigRetriever serverConfigRetriever;
 
-    public MathsSlashCommand(TexHandler texHandler, PasteManager pasteManager, BanManager banManager) {
+    public MathsSlashCommand(TexHandler texHandler, PasteManager pasteManager, ServerConfigRetriever serverConfigRetriever) {
         this.texHandler = texHandler;
-        this.banManager = banManager;
+        this.serverConfigRetriever = serverConfigRetriever;
         this.pasteManager = pasteManager;
         embedCreator = new EmbedCreator();
         INSTANCE = Commands.slash("maths", "Repeats messages back to you.")
