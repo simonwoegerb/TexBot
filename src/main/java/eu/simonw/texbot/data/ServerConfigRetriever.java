@@ -12,8 +12,7 @@ public class ServerConfigRetriever {
     private ServerConfigDAO dao;
     private AsyncLoadingCache<Long, ServerConfig> configCache = Caffeine.newBuilder()
             .maximumSize(10_000)
-            .expireAfterWrite(10, TimeUnit.SECONDS)
-
+            .expireAfterWrite(10, TimeUnit.MINUTES)
             .buildAsync((key, executor) -> CompletableFuture.completedFuture(dao.getServer(key)));
     public ServerConfigRetriever(ServerConfigDAO dao) {
         this.dao = dao;
