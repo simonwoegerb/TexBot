@@ -1,19 +1,15 @@
 package eu.simonw.texbot.commands;
 
-import eu.simonw.texbot.BanManager;
 import eu.simonw.texbot.EmbedCreator;
-import eu.simonw.texbot.data.ServerConfigDAO;
 import eu.simonw.texbot.data.ServerConfigRetriever;
 import eu.simonw.texbot.paste.PasteHandler;
 import eu.simonw.texbot.paste.PasteManager;
 import eu.simonw.texbot.tex.TexHandler;
-import net.dv8tion.jda.api.audit.ActionType;
-import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.User;
-import net.dv8tion.jda.api.entities.UserSnowflake;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.interactions.InteractionHook;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
@@ -24,11 +20,9 @@ import net.dv8tion.jda.api.utils.FileUpload;
 
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.time.Instant;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static eu.simonw.texbot.TexBot.LOGGER;
 
@@ -56,7 +50,11 @@ public class MathsSlashCommand extends ListenerAdapter {
                                         .addChoice("pastebin", "pastebin")
                                         .addChoice("privatebin", "privatebin")
                                         .addChoice("hastebin", "hastebin"))
-                );
+                                .addOptions(new OptionData(OptionType.STRING, "conversion_target", "Resulting File", false, false)
+                                        .addChoice("pdf", "pdf")
+                                        .addChoice("png", "png")
+
+                ));
     }
 
     @Override
@@ -89,39 +87,69 @@ public class MathsSlashCommand extends ListenerAdapter {
             LOGGER.error("Code cannot be retrieved");
             return;
         }
-        boolean kick = false;
+        AtomicBoolean hasError = new AtomicBoolean(false);
+        TexHandler.ConversionType conversionType = event.getOption("conversion_target",
+                TexHandler.ConversionType.TexToPng, TexHandler.ConversionType::getFromOption);
         codeFuture.thenCompose(texHandler::isSafeLatexAsync)
                 .exceptionally(s -> {
                     LOGGER.error("Code was unsafe: {}", s.getMessage());
-                    if (kick) event.getGuild().kick(event.getUser())
-                            .reason("Sent malicious content to TexBot")
-                            .queue();
-                    return "$\\HUGE\\text{Your code is unsafe. " +
-                            "Refrain from using disallowed commands}$";
+                    sendErrorEmbed(event.getHook(), s.getMessage());
+                    hasError.set(true);
+                    return "";
                 })
-                .thenCompose(s -> texHandler.convert(s, TexHandler.ConversionType.TexToPng))
+                .thenCompose(s -> {
+                    if (s.equalsIgnoreCase("")) return CompletableFuture.completedFuture(null);
+                    return texHandler.convert(s, conversionType);
+                })
+
             .thenAccept(path -> {
-                if (path == null)  {
-                    event.getHook().sendMessageEmbeds(
-                            embedCreator.createDefaultEmbed()
-                                    .addField("Your code failed", "", false)
-                                    .build()).queue();
+                if (path == null )  {
+                    if (!hasError.get()) sendErrorEmbed(event.getHook(), "Document could not be compiled.");
                     return;
                 }
                 LOGGER.info("{}", path.toAbsolutePath());
-                String uuid = UUID.randomUUID().toString();
-                User user = event.getInteraction().getUser();
+                sendEmbed(event.getHook(), conversionType, event.getUser(), path);
+
+
+            });
+    }
+
+    public SlashCommandData getInstance() {
+        return INSTANCE;
+    }
+    public void sendErrorEmbed(InteractionHook hook, String errorMessage) {
+        hook.sendMessageEmbeds(
+                embedCreator.createDefaultEmbed()
+                        .addField("Command failed:", errorMessage, false)
+                        .build()).queue();
+    }
+    public void sendEmbed(InteractionHook hook, TexHandler.ConversionType conversionType, User user, Path path) {
+        String uuid = UUID.randomUUID().toString();
+
+
+        switch (conversionType) {
+
+            case TexToPng -> {
                 MessageEmbed embed = embedCreator.
                         createDefaultEmbed()
                         .addField("Your LaTeX code has been converted to the following:", "", false)
                         .setImage("attachment://" + uuid + ".png")
                         .setFooter("Requested by: " + user.getEffectiveName(), user.getEffectiveAvatarUrl())
                         .build();
-                event.getHook().sendMessageEmbeds(embed).addFiles(FileUpload.fromData(path, uuid + ".png", StandardOpenOption.READ)).queue();
-            });
-    }
+                hook.sendMessageEmbeds(embed).addFiles(FileUpload.fromData(path, uuid + ".png", StandardOpenOption.READ)).queue();
 
-    public SlashCommandData getInstance() {
-        return INSTANCE;
+            }
+            case TexToPdf -> {
+                MessageEmbed embed = embedCreator.
+                        createDefaultEmbed()
+                        .addField("Your LaTeX code has been converted to the following:", "", false)
+                        .setFooter("Requested by: " + user.getEffectiveName(), user.getEffectiveAvatarUrl())
+                        .build();
+                hook.sendMessageEmbeds(embed).addFiles(FileUpload.fromData(path, uuid + ".pdf", StandardOpenOption.READ)).queue();
+
+
+            }
+        }
+
     }
 }

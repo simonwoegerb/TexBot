@@ -1,10 +1,12 @@
 package eu.simonw.texbot.tex;
 
+import eu.simonw.texbot.paste.PasteHandler;
+import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +25,7 @@ public class TexHandler {
     public final String APP = "app/";
     public final String TEMPLATE_STANDALONE = APP + "tex/template_standalone.tex";
     public final String TEMPLATE_FULL = APP + "tex/template_full.tex";
+    public final String TEMPLATE_EMPTY = APP + "tex/template_empty.tex";
     private final String[] fireJailCommand = {"firejail",
             "--caps.drop=all", // drop all root capabilities
             "--net=none", //no network access
@@ -42,14 +45,34 @@ public class TexHandler {
             "main.pdf",    // input PDF file
             "main"         // output prefix (output will be 'main-1.png')
     };
-    private final String[] texToPdfCommand = {"latexmk", "--no-shell-escape", "main.tex" };
+    private final String[] texToPdfCommand = {"latexmk",
+            "--no-shell-escape",
+            "-pdflatex=\"pdflatex -interaction=nonstopmode -halt-on-error\" ",
+            "main.tex" };
 
     public final String DIRECTORY = APP + "tex/uuid";
     public final String BODY = "%BODY";
 
     public enum ConversionType {
-        TexToPdf,
-        TexToPng
+        TexToPdf("pdf"),
+        TexToPng("png");
+        private final String name;
+
+        ConversionType(String name) {
+            this.name = name;
+        }
+
+        public static ConversionType getFromName(String name) {
+            for (ConversionType ct : ConversionType.values()) {
+                if (ct.name.startsWith(name)) {
+                    return ct;
+                }
+            }
+            return null;
+        }
+        public static ConversionType getFromOption(OptionMapping data) {
+            return getFromName(data.getAsString());
+        }
     }
 
     protected final Logger LOGGER = LoggerFactory.getLogger(TexHandler.class);
@@ -63,14 +86,14 @@ public class TexHandler {
     public CompletableFuture<Path> convert(String code, ConversionType conversionType) {
         switch (conversionType) {
             case TexToPdf -> {
-                return convertTexToPdf(code, TEMPLATE_FULL);
+                return convertTexToPdf(code, TEMPLATE_EMPTY);
             }
             case TexToPng -> {
                 return convertTexToPdf(code, TEMPLATE_STANDALONE).thenCompose(this::convertPdfToPng);
             }
         }
 
-        return CompletableFuture.failedFuture(new RuntimeException());
+        return CompletableFuture.completedFuture(null);
     }
     @NotNull
     private CompletableFuture<Path> convertPdfToPng(Path pdf_file) {
@@ -85,6 +108,7 @@ public class TexHandler {
                 if (!res) {
                     p.destroyForcibly();
                     LOGGER.error("ERROR {}", res);
+                    return null;
                 }
                 // Resolving the PDF path relative to the main.tex file
                 LOGGER.info("resolving main.png");
@@ -99,33 +123,46 @@ public class TexHandler {
 
     }
     @NotNull
-    private CompletableFuture<Path> convertTexToPdf(String code, String template) {
-        CompletableFuture<Path> futuremain = generateMainFile(code, template);
+        private CompletableFuture<Path> convertTexToPdf(String code, String template) {
+        return generateMainFile(code, template).thenCompose(main ->
+                CompletableFuture.supplyAsync(() -> {
+                    LOGGER.info("Entering Future");
 
-        return futuremain.thenCompose((main) -> {
-            LOGGER.info("Entering Future");
-            String[] command = firejail(texToPdfCommand, main);
-            ProcessBuilder pb = new ProcessBuilder().directory(main.getParent().toFile()).command(command);
-            try {
-                Process p = pb.start();
-                boolean success = p.waitFor(30, TimeUnit.SECONDS);
-                if (!success) {
-                    p.destroyForcibly();
-                    LOGGER.error("Process for {} was not successful {}", main.toAbsolutePath().toString(),p.exitValue());
-                    return CompletableFuture.failedFuture(new RuntimeException("Something went wrong, converting tex to pdf. see Log for " + main.toAbsolutePath().toString()));
-                } else
-                    // Resolving the PDF path relative to the main.tex file
-                    return CompletableFuture.completedFuture(main.getParent().resolve("main.pdf"));
+                    String[] command = firejail(texToPdfCommand, main);
+                    ProcessBuilder pb = new ProcessBuilder()
+                            .directory(main.getParent().toFile())
+                            .command(command);
 
-            } catch (IOException | InterruptedException e) {
-                LOGGER.error("{}", e.getMessage());
-                return CompletableFuture.failedFuture(e);
-            }
+                    try {
+                        Process p = pb.start();
+                        LOGGER.info("Process started");
 
+                        // Wait for up to 30 seconds
+                        if (!p.waitFor(30, TimeUnit.SECONDS)) {
+                            p.destroyForcibly();
+                            throw new RuntimeException("PDF generation timed out.");
+                        }
 
-        });
+                        int exitCode = p.exitValue();
+                        if (exitCode != 0) {
+                            throw new RuntimeException("LaTeX process failed with exit code: " + exitCode);
+                        }
 
+                        Path pdfPath = main.getParent().resolve("main.pdf");
+                        if (!Files.exists(pdfPath)) {
+                            throw new FileNotFoundException("Expected PDF output not found: " + pdfPath);
+                        }
+
+                        return pdfPath;
+
+                    } catch (IOException | InterruptedException e) {
+                        throw new RuntimeException("Exception during LaTeX compilation: " + e.getMessage(), e);
+                    }
+                })
+        ).orTimeout(30, TimeUnit.SECONDS);
     }
+
+
     @NotNull
     @SuppressWarnings("unused")
     private CompletableFuture<Path> generateMainFile(String code, String template_type) {

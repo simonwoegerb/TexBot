@@ -5,8 +5,7 @@ import java.lang.reflect.Field;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+
 
 
 public class TexHandlerTests extends TexHandler {
